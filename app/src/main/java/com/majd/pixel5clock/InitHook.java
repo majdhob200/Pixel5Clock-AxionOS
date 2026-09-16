@@ -1,16 +1,14 @@
 package com.majd.pixel5clock;
 
-import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.text.format.DateFormat;
-import android.util.TypedValue;
-import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.TextClock;
 
-import java.util.Map;
-import java.util.WeakHashMap;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -21,8 +19,11 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public final class InitHook implements IXposedHookLoadPackage {
     private static final String SYSTEMUI = "com.android.systemui";
     private static final String AX_CLOCK_VIEW = "com.android.systemui.shared.clocks.view.AxClockView";
+    private static final String BITMAP_CLOCK_VIEW = "com.android.systemui.shared.clocks.view.BitmapDigitComposeClockView";
     private static final String TAG = "Pixel5ClockAxion";
-    private static final Map<Object, TextClock> CLOCKS = new WeakHashMap<>();
+
+    private static Typeface clockTypeface;
+    private static Typeface dateTypeface;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -34,160 +35,113 @@ public final class InitHook implements IXposedHookLoadPackage {
             return;
         }
 
-        XposedBridge.log(TAG + ": hooked " + AX_CLOCK_VIEW);
+        XposedBridge.log(TAG + ": v0.3 hooked " + AX_CLOCK_VIEW + ".draw(Canvas)");
 
-        XposedBridge.hookAllMethods(axClockView, "onAttachedToWindow", new XC_MethodHook() {
+        XposedBridge.hookAllMethods(axClockView, "draw", new XC_MethodHook() {
             @Override
-            protected void afterHookedMethod(MethodHookParam param) {
+            protected void beforeHookedMethod(MethodHookParam param) {
                 try {
-                    XposedBridge.log(TAG + ": attached class=" + param.thisObject.getClass().getName());
-                    installPixelClock(param.thisObject);
-                } catch (Throwable t) {
-                    XposedBridge.log(TAG + ": attach error: " + t);
-                }
-            }
-        });
+                    Object object = param.thisObject;
+                    if (!(object instanceof View)) return;
+                    if (!BITMAP_CLOCK_VIEW.equals(object.getClass().getName())) return;
 
-        XposedBridge.hookAllMethods(axClockView, "onLayout", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                try {
-                    layoutPixelClock(param.thisObject);
-                } catch (Throwable t) {
-                    XposedBridge.log(TAG + ": layout error: " + t);
-                }
-            }
-        });
+                    boolean large;
+                    try {
+                        large = XposedHelpers.getBooleanField(object, "isLargeClock");
+                    } catch (Throwable t) {
+                        return;
+                    }
+                    if (!large) return;
 
-        XposedBridge.hookAllMethods(axClockView, "onConfigurationChanged", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                try {
-                    updatePixelClock(param.thisObject);
-                } catch (Throwable t) {
-                    XposedBridge.log(TAG + ": config error: " + t);
-                }
-            }
-        });
+                    if (param.args == null || param.args.length == 0 || !(param.args[0] instanceof Canvas)) return;
 
-        XposedBridge.hookAllMethods(axClockView, "onDetachedFromWindow", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                synchronized (CLOCKS) {
-                    CLOCKS.remove(param.thisObject);
+                    View view = (View) object;
+                    Canvas canvas = (Canvas) param.args[0];
+                    drawPixelClock(view, canvas);
+
+                    // Skip Axion's original BitmapDigit/Compose drawing only for the
+                    // large clock. Small clock and all other clock styles stay stock.
+                    param.setResult(null);
+                } catch (Throwable t) {
+                    XposedBridge.log(TAG + ": draw error: " + t);
                 }
             }
         });
     }
 
-    private static boolean shouldReplace(Object object) {
-        if (!(object instanceof ViewGroup)) return false;
-
-        try {
-            boolean large = XposedHelpers.getBooleanField(object, "isLargeClock");
-            XposedBridge.log(TAG + ": class=" + object.getClass().getName() + " isLargeClock=" + large);
-            return large;
-        } catch (Throwable t) {
-            XposedBridge.log(TAG + ": cannot read isLargeClock on " + object.getClass().getName() + ": " + t);
-            return false;
-        }
-    }
-
-    private static void installPixelClock(Object object) {
-        if (!shouldReplace(object)) return;
-        ViewGroup host = (ViewGroup) object;
-
-        synchronized (CLOCKS) {
-            if (CLOCKS.containsKey(object)) {
-                updatePixelClock(object);
-                return;
-            }
-
-            Context context = host.getContext();
-            TextClock clock = new TextClock(context);
-            clock.setFormat24Hour("HH\nmm");
-            clock.setFormat12Hour("h\nmm");
-            clock.setGravity(Gravity.CENTER);
-            clock.setIncludeFontPadding(false);
-            clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 96f);
-            clock.setLineSpacing(-10f, 0.82f);
-            clock.setSingleLine(false);
-            clock.setTextColor(0xFFFFFFFF);
-            clock.setElegantTextHeight(false);
-
+    private static void ensureTypefaces() {
+        if (clockTypeface == null) {
             try {
-                clock.setTypeface(Typeface.createFromFile("/product/fonts/GoogleSansClock-Regular.ttf"), Typeface.NORMAL);
-            } catch (Throwable first) {
-                try {
-                    clock.setTypeface(Typeface.create("google-sans-clock", Typeface.NORMAL), Typeface.NORMAL);
-                } catch (Throwable ignored) { }
+                clockTypeface = Typeface.createFromFile("/product/fonts/GoogleSansClock-Regular.ttf");
+            } catch (Throwable ignored) {
+                clockTypeface = Typeface.create("google-sans-clock", Typeface.NORMAL);
             }
-
-            host.setClipChildren(false);
-            host.setClipToPadding(false);
-
-            for (int i = 0; i < host.getChildCount(); i++) {
-                host.getChildAt(i).setAlpha(0f);
-            }
-
-            host.addView(clock, new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-            CLOCKS.put(object, clock);
-            XposedBridge.log(TAG + ": Pixel clock installed on " + object.getClass().getName());
         }
-
-        updatePixelClock(object);
-        host.requestLayout();
-        host.invalidate();
+        if (dateTypeface == null) {
+            try {
+                dateTypeface = Typeface.createFromFile("/product/fonts/GoogleSans-Regular.ttf");
+            } catch (Throwable ignored) {
+                dateTypeface = Typeface.create("sans-serif", Typeface.NORMAL);
+            }
+        }
     }
 
-    private static void updatePixelClock(Object object) {
-        if (!shouldReplace(object)) return;
+    private static void drawPixelClock(View view, Canvas canvas) {
+        ensureTypefaces();
 
-        TextClock clock;
-        synchronized (CLOCKS) {
-            clock = CLOCKS.get(object);
-        }
-        if (clock == null) return;
-
-        Context context = ((View) object).getContext();
-        if (DateFormat.is24HourFormat(context)) {
-            clock.setFormat24Hour("HH\nmm");
-        } else {
-            clock.setFormat12Hour("h\nmm");
-        }
-
-        clock.setVisibility(View.VISIBLE);
-        clock.setAlpha(1f);
-        clock.invalidate();
-    }
-
-    private static void layoutPixelClock(Object object) {
-        if (!shouldReplace(object)) return;
-
-        ViewGroup host = (ViewGroup) object;
-        TextClock clock;
-        synchronized (CLOCKS) {
-            clock = CLOCKS.get(object);
-        }
-
-        if (clock == null) {
-            installPixelClock(object);
-            synchronized (CLOCKS) {
-                clock = CLOCKS.get(object);
-            }
-            if (clock == null) return;
-        }
-
-        int width = host.getWidth();
-        int height = host.getHeight();
+        final int width = view.getWidth() > 0 ? view.getWidth() : canvas.getWidth();
+        final int height = view.getHeight() > 0 ? view.getHeight() : canvas.getHeight();
         if (width <= 0 || height <= 0) return;
 
-        int wSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY);
-        int hSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY);
-        clock.measure(wSpec, hSpec);
-        clock.layout(0, 0, width, height);
-        clock.bringToFront();
+        final Locale locale = Locale.getDefault();
+        final Date now = new Date();
+        final boolean is24h = DateFormat.is24HourFormat(view.getContext());
+        final String hourPattern = is24h ? "HH" : "hh";
+        final String hour = new SimpleDateFormat(hourPattern, locale).format(now);
+        final String minute = new SimpleDateFormat("mm", locale).format(now);
+
+        Paint clock = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        clock.setColor(0xFFFFFFFF);
+        clock.setTextAlign(Paint.Align.CENTER);
+        clock.setTypeface(clockTypeface);
+
+        // Fit a true two-row Pixel-style clock to Axion's existing large-clock box.
+        // Width controls the visual Pixel proportions while height prevents clipping.
+        float sizeByWidth = width * 0.43f;
+        float sizeByHeight = height * 0.34f;
+        float textSize = Math.min(sizeByWidth, sizeByHeight);
+        textSize = Math.max(textSize, 72f * view.getResources().getDisplayMetrics().scaledDensity / 3f);
+        clock.setTextSize(textSize);
+
+        Paint.FontMetrics fm = clock.getFontMetrics();
+        float lineAdvance = textSize * 0.86f;
+        float clockBlockHeight = lineAdvance + (fm.descent - fm.ascent);
+
+        // Reserve a small strip below the clock for the date, like the Pixel AOD.
+        float dateStrip = Math.max(34f * view.getResources().getDisplayMetrics().density, height * 0.12f);
+        float centerY = (height - dateStrip) * 0.50f;
+        float firstBaseline = centerY - (clockBlockHeight * 0.5f) - fm.ascent;
+        float secondBaseline = firstBaseline + lineAdvance;
+        float centerX = width * 0.5f;
+
+        canvas.drawText(hour, centerX, firstBaseline, clock);
+        canvas.drawText(minute, centerX, secondBaseline, clock);
+
+        Paint datePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        datePaint.setColor(0xFFFFFFFF);
+        datePaint.setTextAlign(Paint.Align.CENTER);
+        datePaint.setTypeface(dateTypeface);
+        datePaint.setTextSize(Math.max(13f * view.getResources().getDisplayMetrics().scaledDensity, width * 0.031f));
+
+        String datePattern;
+        try {
+            datePattern = DateFormat.getBestDateTimePattern(locale, "EEE, d MMM");
+        } catch (Throwable ignored) {
+            datePattern = "EEE, d MMM";
+        }
+        String date = new SimpleDateFormat(datePattern, locale).format(now);
+        Paint.FontMetrics dfm = datePaint.getFontMetrics();
+        float dateBaseline = height - (dateStrip * 0.40f) - dfm.descent;
+        canvas.drawText(date, centerX, dateBaseline, datePaint);
     }
 }
