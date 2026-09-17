@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Config>
+    <Group text="Pixel Stacked Clock">
+        <ImagePicker
+            text="Lockscreen wallpaper"
+            summary="Choose a wallpaper cropped close to your phone screen ratio. If none is chosen, a dark fallback background is used."
+            id="wallpaper" />
+    </Group>
+</Config>
