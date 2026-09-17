@@ -1,0 +1,39 @@
+name: Build HyperOS Pixel Stacked Clock Theme
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "hyperos-theme" ]
+    paths:
+      - "hyperos-theme/**"
+      - ".github/workflows/build-hyperos-theme.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install zip
+        run: sudo apt-get update && sudo apt-get install -y zip unzip
+
+      - name: Build MTZ
+        run: bash hyperos-theme/build.sh
+
+      - name: Verify MTZ structure
+        run: |
+          unzip -l hyperos-theme/dist/PixelStackedClock-HyperOS3-v0.1.mtz
+          rm -rf /tmp/mtz-check
+          mkdir -p /tmp/mtz-check
+          cd /tmp/mtz-check
+          unzip -q "$GITHUB_WORKSPACE/hyperos-theme/dist/PixelStackedClock-HyperOS3-v0.1.mtz"
+          test -f description.xml
+          test -f lockscreen
+          unzip -t lockscreen
+
+      - name: Upload MTZ
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixelStackedClock-HyperOS3-v0.1
+          path: hyperos-theme/dist/PixelStackedClock-HyperOS3-v0.1.mtz
