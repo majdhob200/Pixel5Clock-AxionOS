@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Lockscreen version="2"
+    frameRate="30"
+    screenWidth="1080"
+    useVariableUpdater="DateTime.Minute"
+    useHardwareCanvas="true"
+    displayDesktop="false">
+
+    <!-- Fallback background. A custom image can be selected in lockscreen settings. -->
+    <Rectangle x="0" y="0" w="#screen_width" h="#screen_height" fillColor="#101014" />
+
+    <!-- Optional user-selected wallpaper -->
+    <Var name="wallpaper_uri"
+        expression="ifelse(strContains(@wallpaper,'com.android.fileexplorer'),strReplaceAll(@wallpaper,'content://com.android.fileexplorer.myprovider/external_files/','file:///sdcard/'),strContains(@wallpaper,'com.miui.gallery'),strReplaceAll(@wallpaper,'content://com.miui.gallery.open/raw/%2Fstorage%2Femulated%2F0%2F','file:///sdcard/'),@wallpaper)"
+        type="string"
+        const="true" />
+    <Image x="0" y="0" w="#screen_width" h="#screen_height" src="@wallpaper_uri" srcType="Uri" />
+
+    <!-- Pixel-style date above the clock -->
+    <DateTime
+        x="#screen_width/2"
+        y="#screen_height*0.115"
+        align="center"
+        alignV="center"
+        color="#FFFFFFFF"
+        alpha="245"
+        size="42"
+        format="EEE, d MMM" />
+
+    <!-- Stacked clock: hour above minute. Follows 12/24-hour system setting. -->
+    <DateTime
+        x="#screen_width/2"
+        y="#screen_height*0.235"
+        align="center"
+        alignV="center"
+        color="#FFFFFFFF"
+        size="330"
+        formatExp="ifelse(#time_format,'HH','hh')"
+        fontFamily="mitype-clock" />
+
+    <DateTime
+        x="#screen_width/2"
+        y="#screen_height*0.365"
+        align="center"
+        alignV="center"
+        color="#FFFFFFFF"
+        size="330"
+        format="mm"
+        fontFamily="mitype-clock" />
+
+    <!-- Battery percentage, kept above the fingerprint zone -->
+    <Text
+        x="#screen_width/2"
+        y="#screen_height-370"
+        align="center"
+        alignV="center"
+        color="#FFFFFFFF"
+        alpha="220"
+        size="34"
+        format="%d%%"
+        paras="#battery_level" />
+
+    <!-- Invisible swipe-up unlock gesture. Fingerprint remains system-controlled. -->
+    <Unlocker name="Unlocker">
+        <StartPoint x="0" y="0" w="#screen_width" h="#screen_height" />
+        <EndPoint x="0" y="-#screen_height" w="#screen_width" h="#screen_height-200">
+            <Path tolerance="800">
+                <Position x="0" y="0" />
+                <Position x="0" y="-#screen_height" />
+            </Path>
+        </EndPoint>
+    </Unlocker>
+</Lockscreen>
