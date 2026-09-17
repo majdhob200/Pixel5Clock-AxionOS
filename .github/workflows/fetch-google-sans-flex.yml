@@ -1,0 +1,31 @@
+name: Fetch Google Sans Flex
+
+on:
+  push:
+    branches: [hyperos-theme]
+    paths: ['.github/workflows/fetch-google-sans-flex.yml']
+  workflow_dispatch:
+
+jobs:
+  fetch-font:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download official Google Sans Flex Android release
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 \
+            'https://github.com/googlefonts/googlesans-flex/releases/download/v4.007/GoogleSansFlex-v4.007.Android.zip' \
+            -o GoogleSansFlex-v4.007.Android.zip
+          echo '91cd4f406959ac18ccfe498d90f240fd897c55ae5a143df698603c64d8dd834b  GoogleSansFlex-v4.007.Android.zip' | sha256sum -c -
+          mkdir extracted
+          unzip -q GoogleSansFlex-v4.007.Android.zip -d extracted
+          find extracted -type f -iname '*.ttf' -printf '%s\t%p\n' | sort -nr
+          FONT="$(find extracted -type f -iname '*.ttf' -printf '%s\t%p\n' | sort -nr | head -n1 | cut -f2-)"
+          cp "$FONT" GoogleSansFlex.ttf
+          file GoogleSansFlex.ttf
+      - name: Upload font artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoogleSansFlex-v4.007-TTF
+          path: GoogleSansFlex.ttf
+          retention-days: 1
