@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<MIUI-Theme>
+    <title>Pixel Stacked Clock</title>
+    <designer>Majd</designer>
+    <author>Majd</author>
+    <version>0.1</version>
+    <uiVersion>17</uiVersion>
+    <miuiAdapterVersion>5.0</miuiAdapterVersion>
+    <description>Minimal stacked lockscreen clock for HyperOS 3. Uses Xiaomi's built-in clock font; no proprietary font files are bundled.</description>
+</MIUI-Theme>
